@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: satellite-tracker-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node custom-api-advanced.js
+    envVars:
+      - key: PORT
+        value: 10000

@@ -1,0 +1,26 @@
+{
+  "name": "orbitx-api",
+  "version": "1.0.0",
+  "description": "OrbitX - Satellite Tracking API (No API Key Required)",
+  "main": "custom-api-advanced.js",
+  "scripts": {
+    "start": "node custom-api-advanced.js",
+    "dev": "node custom-api-advanced.js"
+  },
+  "dependencies": {
+    "satellite.js": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": [
+    "orbitx",
+    "satellite",
+    "tracker",
+    "tle",
+    "celestrak",
+    "no-api-key"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
