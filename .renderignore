@@ -1,0 +1,7 @@
+# Ignore these files during Render deployment
+requirements.txt
+*.py
+.vscode/
+docs/
+*.md
+!render.yaml
