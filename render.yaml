@@ -1,11 +1,10 @@
 services:
   - type: web
-    name: satellite-tracker
-    env: python
-    region: oregon
-    plan: free
-    buildCommand: ""
-    startCommand: cd backend && python server.py
+    name: orbitx-api
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
     envVars:
-      - key: PORT
-        value: 3000
+      - key: NODE_ENV
+        value: production
