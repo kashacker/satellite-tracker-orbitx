@@ -162,47 +162,52 @@ def calculate_passes(tle, observer_lat, observer_lng, observer_alt, days=10):
     """Calculate upcoming passes"""
     passes = []
     satellite = EarthSatellite(tle['line1'], tle['line2'], tle['name'], ts)
-    observer = wgs84.latlon(observer_lat, observer_lng, observer_alt)
+    observer = wgs84.latlon(observer_lat, observer_lng, observer_alt / 1000.0)  # Convert meters to km
     
     t0 = ts.utc(datetime.utcnow())
     t1 = ts.utc(datetime.utcnow() + timedelta(days=days))
     
-    difference = satellite - observer
-    
-    # Find events (rise, culminate, set)
-    t, events = satellite.find_events(observer, t0, t1, altitude_degrees=0.0)
-    
-    # Group events into passes
-    current_pass = {}
-    for ti, event in zip(t, events):
-        if event == 0:  # Rise
-            current_pass = {'start': ti}
-        elif event == 1:  # Culminate
-            if 'start' in current_pass:
-                current_pass['max'] = ti
-        elif event == 2:  # Set
-            if 'start' in current_pass and 'max' in current_pass:
-                topocentric = difference.at(current_pass['max'])
-                alt, az_start, _ = difference.at(current_pass['start']).altaz()
-                max_alt, _, _ = topocentric.altaz()
-                _, az_end, _ = difference.at(ti).altaz()
-                
-                if max_alt.degrees > 10:
-                    start_time = current_pass['start'].utc_datetime()
-                    max_time = current_pass['max'].utc_datetime()
-                    end_time = ti.utc_datetime()
+    try:
+        # Find events (rise, culminate, set)
+        t, events = satellite.find_events(observer, t0, t1, altitude_degrees=0.0)
+        
+        # Group events into passes
+        current_pass = {}
+        for ti, event in zip(t, events):
+            if event == 0:  # Rise
+                current_pass = {'start': ti}
+            elif event == 1:  # Culminate
+                if 'start' in current_pass:
+                    current_pass['max'] = ti
+            elif event == 2:  # Set
+                if 'start' in current_pass and 'max' in current_pass:
+                    difference = satellite - observer
+                    topocentric_max = difference.at(current_pass['max'])
+                    topocentric_start = difference.at(current_pass['start'])
+                    topocentric_end = difference.at(ti)
                     
-                    passes.append({
-                        'startUTC': int(start_time.timestamp()),
-                        'maxUTC': int(max_time.timestamp()),
-                        'endUTC': int(end_time.timestamp()),
-                        'duration': int((end_time - start_time).total_seconds()),
-                        'maxEl': round(max_alt.degrees),
-                        'startAz': round(az_start.degrees),
-                        'endAz': round(az_end.degrees),
-                        'mag': -2.5 if max_alt.degrees > 45 else -1.5 if max_alt.degrees > 30 else -0.5
-                    })
-            current_pass = {}
+                    max_alt, _, _ = topocentric_max.altaz()
+                    _, az_start, _ = topocentric_start.altaz()
+                    _, az_end, _ = topocentric_end.altaz()
+                    
+                    if max_alt.degrees > 10:
+                        start_time = current_pass['start'].utc_datetime()
+                        max_time = current_pass['max'].utc_datetime()
+                        end_time = ti.utc_datetime()
+                        
+                        passes.append({
+                            'startUTC': int(start_time.timestamp()),
+                            'maxUTC': int(max_time.timestamp()),
+                            'endUTC': int(end_time.timestamp()),
+                            'duration': int((end_time - start_time).total_seconds()),
+                            'maxEl': round(max_alt.degrees),
+                            'startAz': round(az_start.degrees),
+                            'endAz': round(az_end.degrees),
+                            'mag': -2.5 if max_alt.degrees > 45 else -1.5 if max_alt.degrees > 30 else -0.5
+                        })
+                current_pass = {}
+    except Exception as e:
+        print(f'Error calculating passes: {e}')
     
     return passes
 
