@@ -221,6 +221,83 @@ function calculatePosition(tle, observerLat, observerLng, observerAlt, date = ne
     };
 }
 
+// Calculate upcoming passes
+function calculatePasses(tle, observerLat, observerLng, observerAlt, days = 10) {
+    const passes = [];
+    const satrec = satellite.twoline2satrec(tle.line1, tle.line2);
+    const now = new Date();
+    const endTime = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+    
+    const observerGd = {
+        latitude: observerLat * Math.PI / 180,
+        longitude: observerLng * Math.PI / 180,
+        height: observerAlt / 1000
+    };
+    
+    // Check every 60 seconds for passes
+    const timeStep = 60 * 1000; // 60 seconds
+    let inPass = false;
+    let passStart = null;
+    let maxElevation = 0;
+    let passStartAz = 0;
+    let passEndAz = 0;
+    
+    for (let time = now.getTime(); time < endTime.getTime(); time += timeStep) {
+        const date = new Date(time);
+        const positionAndVelocity = satellite.propagate(satrec, date);
+        
+        if (positionAndVelocity.position === false) continue;
+        
+        const positionEci = positionAndVelocity.position;
+        const gmst = satellite.gstime(date);
+        const positionEcf = satellite.eciToEcf(positionEci, gmst);
+        const lookAngles = satellite.ecfToLookAngles(observerGd, positionEcf);
+        
+        const elevation = lookAngles.elevation * 180 / Math.PI;
+        const azimuth = lookAngles.azimuth * 180 / Math.PI;
+        
+        // Pass starts when satellite rises above horizon
+        if (!inPass && elevation > 0) {
+            inPass = true;
+            passStart = date;
+            maxElevation = elevation;
+            passStartAz = azimuth;
+        }
+        
+        // Track maximum elevation during pass
+        if (inPass && elevation > maxElevation) {
+            maxElevation = elevation;
+        }
+        
+        // Pass ends when satellite goes below horizon
+        if (inPass && elevation <= 0) {
+            inPass = false;
+            passEndAz = azimuth;
+            
+            // Only include passes with max elevation > 10 degrees
+            if (maxElevation > 10 && passStart) {
+                const duration = Math.floor((date.getTime() - passStart.getTime()) / 1000);
+                
+                passes.push({
+                    startUTC: Math.floor(passStart.getTime() / 1000),
+                    maxUTC: Math.floor((passStart.getTime() + date.getTime()) / 2 / 1000),
+                    endUTC: Math.floor(date.getTime() / 1000),
+                    duration: duration,
+                    maxEl: Math.round(maxElevation),
+                    startAz: Math.round(passStartAz),
+                    endAz: Math.round(passEndAz),
+                    mag: maxElevation > 45 ? -2.5 : maxElevation > 30 ? -1.5 : -0.5 // Estimated magnitude
+                });
+            }
+            
+            maxElevation = 0;
+            passStart = null;
+        }
+    }
+    
+    return passes;
+}
+
 // HTTP Server
 const server = http.createServer(async (req, res) => {
     // CORS
@@ -257,6 +334,29 @@ const server = http.createServer(async (req, res) => {
                     transactionscount: 0
                 },
                 positions: [position]
+            }));
+        }
+        
+        // /api/passes/:noradId/:lat/:lng/:alt/:days
+        else if (path.match(/^\/api\/passes\/\d+\/-?\d+\.?\d*\/-?\d+\.?\d*\/\d+\/\d+/)) {
+            const parts = path.split('/').filter(p => p);
+            const noradId = parseInt(parts[2]);
+            const lat = parseFloat(parts[3]);
+            const lng = parseFloat(parts[4]);
+            const alt = parseFloat(parts[5]);
+            const days = parseInt(parts[6]);
+            
+            const tle = await getTLE(noradId);
+            const passes = calculatePasses(tle, lat, lng, alt, days);
+            
+            res.writeHead(200);
+            res.end(JSON.stringify({
+                info: {
+                    satname: tle.name,
+                    satid: noradId,
+                    passescount: passes.length
+                },
+                passes: passes
             }));
         }
         
@@ -360,6 +460,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     console.log(`📡 TLE data from Celestrak (no API key needed!)`);
     console.log(`\n✨ Endpoints:`);
     console.log(`   GET /api/position/:noradId/:lat/:lng/:alt`);
+    console.log(`   GET /api/passes/:noradId/:lat/:lng/:alt/:days`);
     console.log(`   GET /api/tle/:noradId`);
     console.log(`   GET /api/satellites`);
     console.log(`   GET /api/satellites/search?q=query`);

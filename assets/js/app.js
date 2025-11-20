@@ -31,14 +31,10 @@ let allSatellitesData = [];
 function initMap() {
     map = L.map('map').setView([20, 0], 2);
     
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 18
-    }).addTo(map);
-    
-    // Add dark theme tiles for better visibility
-    L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
-        attribution: '© Stadia Maps, © OpenMapTiles, © OpenStreetMap contributors',
+    // Use CartoDB Dark Matter tiles (free, no API key required)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO',
+        subdomains: 'abcd',
         maxZoom: 20
     }).addTo(map);
 }
@@ -58,15 +54,22 @@ async function getSatellitePosition(noradId) {
     // Always use OrbitX API
     const url = `${CONFIG.LOCAL_SERVER_URL}/position/${noradId}/${CONFIG.OBSERVER.latitude}/${CONFIG.OBSERVER.longitude}/${CONFIG.OBSERVER.altitude}`;
     
-    console.log('✅ Using OrbitX API:', url); // Debug log
+    console.log('✅ Using OrbitX API:', url);
+    console.log('📍 Config check:', {
+        USE_LOCAL_SERVER: CONFIG.USE_LOCAL_SERVER,
+        LOCAL_SERVER_URL: CONFIG.LOCAL_SERVER_URL,
+        hostname: window.location.hostname
+    });
     
     try {
         const response = await fetch(url);
-        console.log('Response status:', response.status); // Debug log
+        console.log('Response status:', response.status);
+        console.log('Response URL:', response.url);
         
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('API Error Response:', errorText);
+            console.error('❌ API Error Response:', errorText);
+            console.error('❌ Failed URL:', url);
             
             // Handle 401 Unauthorized error
             if (response.status === 401) {
@@ -120,11 +123,9 @@ async function getSatelliteTLE(noradId) {
     }
 }
 
-// Fetch visual passes - OrbitX API doesn't support this yet
+// Fetch visual passes using OrbitX API
 async function getVisualPasses(noradId, days = 10) {
-    // Visual passes not supported by OrbitX API yet
-    console.warn('Visual passes not available in OrbitX API');
-    return null;
+    const url = `${CONFIG.LOCAL_SERVER_URL}/passes/${noradId}/${CONFIG.OBSERVER.latitude}/${CONFIG.OBSERVER.longitude}/${CONFIG.OBSERVER.altitude}/${days}`;
     
     try {
         const response = await fetch(url);
@@ -580,24 +581,69 @@ function updatePassesDisplay(passes) {
     const passesContent = document.getElementById('passesContent');
     
     if (!passes || !passes.passes || passes.passes.length === 0) {
-        passesContent.innerHTML = '<p class="loading">No visible passes in the next 10 days</p>';
+        passesContent.innerHTML = '<p class="loading">No visible passes in the next 10 days (elevation > 10°)</p>';
         return;
     }
     
-    let html = '';
-    passes.passes.slice(0, 5).forEach(pass => {
+    let html = `<div style="margin-bottom: 10px; padding: 8px; background: rgba(0,212,255,0.1); border-radius: 4px; font-size: 0.9em;">
+        Found <strong>${passes.passes.length}</strong> visible passes in the next 10 days
+    </div>`;
+    
+    passes.passes.slice(0, 10).forEach((pass, index) => {
         const startTime = new Date(pass.startUTC * 1000);
+        const maxTime = new Date(pass.maxUTC * 1000);
+        const endTime = new Date(pass.endUTC * 1000);
+        
+        // Determine visibility quality
+        let quality = 'Good';
+        let qualityColor = '#00d4ff';
+        if (pass.maxEl > 60) {
+            quality = 'Excellent';
+            qualityColor = '#00ff88';
+        } else if (pass.maxEl > 40) {
+            quality = 'Very Good';
+            qualityColor = '#00ffcc';
+        } else if (pass.maxEl < 20) {
+            quality = 'Fair';
+            qualityColor = '#ffaa00';
+        }
+        
+        // Get direction names
+        const startDir = getDirectionName(pass.startAz);
+        const endDir = getDirectionName(pass.endAz);
+        
         html += `
-            <div class="pass-item">
-                <div class="pass-time">${startTime.toLocaleString()}</div>
-                <div><strong>Duration:</strong> ${Math.floor(pass.duration / 60)} min ${pass.duration % 60} sec</div>
-                <div><strong>Max Elevation:</strong> ${pass.maxEl}°</div>
-                <div><strong>Magnitude:</strong> ${pass.mag}</div>
+            <div class="pass-item" style="border-left: 3px solid ${qualityColor};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <div class="pass-time" style="font-size: 1em; font-weight: bold;">${startTime.toLocaleDateString()} ${startTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div>
+                    <div style="background: ${qualityColor}; color: #000; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold;">${quality}</div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.9em;">
+                    <div><strong>Duration:</strong> ${Math.floor(pass.duration / 60)}m ${pass.duration % 60}s</div>
+                    <div><strong>Max Elevation:</strong> ${pass.maxEl}°</div>
+                    <div><strong>Rises:</strong> ${startDir} (${pass.startAz}°)</div>
+                    <div><strong>Sets:</strong> ${endDir} (${pass.endAz}°)</div>
+                    <div><strong>Peak Time:</strong> ${maxTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div>
+                    <div><strong>Brightness:</strong> ${pass.mag > 0 ? '+' : ''}${pass.mag}</div>
+                </div>
             </div>
         `;
     });
     
+    if (passes.passes.length > 10) {
+        html += `<div style="text-align: center; padding: 10px; color: #888; font-size: 0.9em;">
+            Showing 10 of ${passes.passes.length} passes
+        </div>`;
+    }
+    
     passesContent.innerHTML = html;
+}
+
+// Get compass direction name from azimuth
+function getDirectionName(azimuth) {
+    const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+    const index = Math.round(azimuth / 22.5) % 16;
+    return directions[index];
 }
 
 // Update satellite marker on map
@@ -855,10 +901,10 @@ async function trackSatellite(noradId, category = null) {
             document.getElementById('positionContent').innerHTML = `
                 <div class="info-item" style="background: rgba(255, 165, 0, 0.1); border-left-color: orange;">
                     <strong>⚠️ Live Position Unavailable</strong><br>
-                    API key required for real-time tracking.<br><br>
+                    OrbitX API connection failed. Please ensure the backend server is running.<br><br>
                     <strong>To enable live tracking:</strong><br>
-                    1. Get API key from <a href="https://www.n2yo.com/api/" target="_blank" style="color: #00d4ff;">N2YO.com</a><br>
-                    2. Update config.js with your key<br>
+                    1. Start the backend server: <code>cd backend && npm start</code><br>
+                    2. Verify server is running at: ${CONFIG.LOCAL_SERVER_URL}<br>
                     3. Refresh the page
                 </div>
             `;
@@ -866,7 +912,7 @@ async function trackSatellite(noradId, category = null) {
             document.getElementById('passesContent').innerHTML = `
                 <div class="info-item" style="background: rgba(255, 165, 0, 0.1); border-left-color: orange;">
                     <strong>⚠️ Pass Predictions Unavailable</strong><br>
-                    Requires valid API key for pass calculations.
+                    Unable to calculate passes. Please ensure the backend server is running.
                 </div>
             `;
         }

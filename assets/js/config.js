@@ -1,27 +1,23 @@
 /**
  * Satellite Tracker Configuration
+ * OrbitX API - Version 2.0
  * 
  * This file contains all configuration settings for the satellite tracker application.
  * Modify these settings according to your needs.
  */
 
 const CONFIG = {
-    // ===== Backend Server Configuration =====
+    VERSION: '2.0.0',
+    // ===== OrbitX Backend Configuration =====
     // Using OrbitX API (no API key required!)
     USE_LOCAL_SERVER: true,
-    LOCAL_SERVER_URL: window.location.hostname === 'localhost' 
+    LOCAL_SERVER_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         ? 'http://localhost:3001/api'
-        : 'https://satellite-tracker-production-6750.up.railway.app/api',
+        : 'https://satellite-tracker-production-008a.up.railway.app/api',
     
-    // ===== CORS Proxy Configuration =====
-    // Not needed - Railway backend handles CORS
+    // ===== CORS Configuration =====
     USE_CORS_PROXY: false,
     CORS_PROXY_URL: '',
-    
-    // ===== N2YO API Configuration =====
-    // Get your API key from: https://www.n2yo.com/api/
-    N2YO_API_KEY: '34G9M7-CA6GC5-UWSAU2-5LMI',
-    N2YO_BASE_URL: 'https://api.n2yo.com/rest/v1/satellite',
     
     // ===== Observer Location =====
     // Set your location coordinates for accurate satellite tracking
