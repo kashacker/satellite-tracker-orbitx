@@ -136,7 +136,8 @@ def calculate_position(tle, observer_lat, observer_lng, observer_alt, date=None)
         date = datetime.utcnow()
     
     satellite = EarthSatellite(tle['line1'], tle['line2'], tle['name'], ts)
-    observer = wgs84.latlon(observer_lat, observer_lng, observer_alt)
+    # observer_alt is in meters, convert to km for Skyfield
+    observer = wgs84.latlon(observer_lat, observer_lng, observer_alt / 1000.0)
     
     t = ts.utc(date.year, date.month, date.day, date.hour, date.minute, date.second)
     
@@ -236,13 +237,19 @@ def get_position(norad_id, lat, lng, alt):
 
 @app.route('/api/passes/<int:norad_id>/<lat>/<lng>/<alt>/<int:days>')
 def get_passes(norad_id, lat, lng, alt, days):
-    lat = float(lat)
-    lng = float(lng)
-    alt = float(alt)
     """Get satellite passes"""
     try:
+        lat = float(lat)
+        lng = float(lng)
+        alt = float(alt)
+        
+        print(f"Fetching passes for satellite {norad_id} at ({lat}, {lng}, {alt}m) for {days} days")
+        
         tle = get_tle(norad_id)
+        print(f"Got TLE for {tle['name']}")
+        
         passes = calculate_passes(tle, lat, lng, alt, days)
+        print(f"Calculated {len(passes)} passes")
         
         return jsonify({
             'info': {
