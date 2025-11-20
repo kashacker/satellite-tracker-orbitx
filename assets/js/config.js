@@ -12,8 +12,8 @@ const CONFIG = {
     // Using OrbitX API (no API key required!)
     USE_LOCAL_SERVER: true,
     LOCAL_SERVER_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:3001/api'
-        : 'https://satellite-tracker-production-008a.up.railway.app/api',
+        ? 'http://localhost:10000/api'
+        : 'https://satellite-tracker-orbitx.onrender.com/api',
     
     // ===== CORS Configuration =====
     USE_CORS_PROXY: false,

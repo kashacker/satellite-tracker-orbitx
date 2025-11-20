@@ -901,11 +901,10 @@ async function trackSatellite(noradId, category = null) {
             document.getElementById('positionContent').innerHTML = `
                 <div class="info-item" style="background: rgba(255, 165, 0, 0.1); border-left-color: orange;">
                     <strong>⚠️ Live Position Unavailable</strong><br>
-                    OrbitX API connection failed. Please ensure the backend server is running.<br><br>
-                    <strong>To enable live tracking:</strong><br>
-                    1. Start the backend server: <code>cd backend && npm start</code><br>
-                    2. Verify server is running at: ${CONFIG.LOCAL_SERVER_URL}<br>
-                    3. Refresh the page
+                    OrbitX API connection failed: ${apiError.message}<br><br>
+                    <strong>API URL:</strong> ${CONFIG.LOCAL_SERVER_URL}<br>
+                    <strong>Error:</strong> ${apiError.message}<br><br>
+                    The backend server may be starting up. Please wait a moment and refresh the page.
                 </div>
             `;
             
