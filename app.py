@@ -207,8 +207,11 @@ def calculate_passes(tle, observer_lat, observer_lng, observer_alt, days=10):
     return passes
 
 
-@app.route('/api/position/<int:norad_id>/<float:lat>/<float:lng>/<float:alt>')
+@app.route('/api/position/<int:norad_id>/<lat>/<lng>/<alt>')
 def get_position(norad_id, lat, lng, alt):
+    lat = float(lat)
+    lng = float(lng)
+    alt = float(alt)
     """Get satellite position"""
     try:
         tle = get_tle(norad_id)
@@ -226,8 +229,11 @@ def get_position(norad_id, lat, lng, alt):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/passes/<int:norad_id>/<float:lat>/<float:lng>/<float:alt>/<int:days>')
+@app.route('/api/passes/<int:norad_id>/<lat>/<lng>/<alt>/<int:days>')
 def get_passes(norad_id, lat, lng, alt, days):
+    lat = float(lat)
+    lng = float(lng)
+    alt = float(alt)
     """Get satellite passes"""
     try:
         tle = get_tle(norad_id)
