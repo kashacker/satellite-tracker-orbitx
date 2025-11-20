@@ -160,55 +160,78 @@ def calculate_position(tle, observer_lat, observer_lng, observer_alt, date=None)
 
 
 def calculate_passes(tle, observer_lat, observer_lng, observer_alt, days=10):
-    """Calculate upcoming passes"""
+    """Calculate upcoming passes using manual elevation checking"""
     passes = []
-    satellite = EarthSatellite(tle['line1'], tle['line2'], tle['name'], ts)
-    observer = wgs84.latlon(observer_lat, observer_lng, observer_alt / 1000.0)  # Convert meters to km
-    
-    t0 = ts.utc(datetime.utcnow())
-    t1 = ts.utc(datetime.utcnow() + timedelta(days=days))
     
     try:
-        # Find events (rise, culminate, set)
-        t, events = satellite.find_events(observer, t0, t1, altitude_degrees=0.0)
+        satellite = EarthSatellite(tle['line1'], tle['line2'], tle['name'], ts)
+        observer = wgs84.latlon(observer_lat, observer_lng, observer_alt / 1000.0)
+        difference = satellite - observer
         
-        # Group events into passes
-        current_pass = {}
-        for ti, event in zip(t, events):
-            if event == 0:  # Rise
-                current_pass = {'start': ti}
-            elif event == 1:  # Culminate
-                if 'start' in current_pass:
-                    current_pass['max'] = ti
-            elif event == 2:  # Set
-                if 'start' in current_pass and 'max' in current_pass:
-                    difference = satellite - observer
-                    topocentric_max = difference.at(current_pass['max'])
-                    topocentric_start = difference.at(current_pass['start'])
-                    topocentric_end = difference.at(ti)
+        # Check every minute for passes
+        start_time = datetime.utcnow()
+        end_time = start_time + timedelta(days=days)
+        current_time = start_time
+        
+        in_pass = False
+        pass_start = None
+        pass_max_el = 0
+        pass_max_time = None
+        pass_start_az = 0
+        
+        while current_time < end_time:
+            t = ts.utc(current_time.year, current_time.month, current_time.day, 
+                      current_time.hour, current_time.minute, current_time.second)
+            
+            topocentric = difference.at(t)
+            alt, az, distance = topocentric.altaz()
+            elevation = alt.degrees
+            azimuth = az.degrees
+            
+            # Satellite rises above horizon
+            if not in_pass and elevation > 0:
+                in_pass = True
+                pass_start = current_time
+                pass_max_el = elevation
+                pass_max_time = current_time
+                pass_start_az = azimuth
+            
+            # Track maximum elevation during pass
+            elif in_pass and elevation > pass_max_el:
+                pass_max_el = elevation
+                pass_max_time = current_time
+            
+            # Satellite sets below horizon
+            elif in_pass and elevation <= 0:
+                in_pass = False
+                
+                # Only include passes with max elevation > 10 degrees
+                if pass_max_el > 10:
+                    duration = int((current_time - pass_start).total_seconds())
                     
-                    max_alt, _, _ = topocentric_max.altaz()
-                    _, az_start, _ = topocentric_start.altaz()
-                    _, az_end, _ = topocentric_end.altaz()
-                    
-                    if max_alt.degrees > 10:
-                        start_time = current_pass['start'].utc_datetime()
-                        max_time = current_pass['max'].utc_datetime()
-                        end_time = ti.utc_datetime()
-                        
-                        passes.append({
-                            'startUTC': int(start_time.timestamp()),
-                            'maxUTC': int(max_time.timestamp()),
-                            'endUTC': int(end_time.timestamp()),
-                            'duration': int((end_time - start_time).total_seconds()),
-                            'maxEl': round(max_alt.degrees),
-                            'startAz': round(az_start.degrees),
-                            'endAz': round(az_end.degrees),
-                            'mag': -2.5 if max_alt.degrees > 45 else -1.5 if max_alt.degrees > 30 else -0.5
-                        })
-                current_pass = {}
+                    passes.append({
+                        'startUTC': int(pass_start.timestamp()),
+                        'maxUTC': int(pass_max_time.timestamp()),
+                        'endUTC': int(current_time.timestamp()),
+                        'duration': duration,
+                        'maxEl': round(pass_max_el),
+                        'startAz': round(pass_start_az),
+                        'endAz': round(azimuth),
+                        'mag': -2.5 if pass_max_el > 45 else -1.5 if pass_max_el > 30 else -0.5
+                    })
+                
+                # Reset for next pass
+                pass_max_el = 0
+            
+            # Increment by 1 minute
+            current_time += timedelta(minutes=1)
+        
+        print(f'Found {len(passes)} passes with elevation > 10°')
+        
     except Exception as e:
         print(f'Error calculating passes: {e}')
+        import traceback
+        traceback.print_exc()
     
     return passes
 
