@@ -30,6 +30,11 @@ satellite_catalog = []
 catalog_last_update = 0
 CATALOG_CACHE_DURATION = 24 * 60 * 60  # 24 hours in seconds
 
+# Passes cache
+passes_cache = {}
+last_passes_update = {}
+PASSES_CACHE_DURATION = 1 * 60 * 60  # 1 hour in seconds
+
 # Celestrak TLE sources
 CELESTRAK_SOURCES = [
     {'url': 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle', 'category': 'Space Stations'},
@@ -168,18 +173,20 @@ def calculate_passes(tle, observer_lat, observer_lng, observer_alt, days=10):
         observer = wgs84.latlon(observer_lat, observer_lng, observer_alt / 1000.0)
         difference = satellite - observer
         
-        # Check every minute for passes
+        # Check every 3 minutes for passes (faster calculation)
         start_time = datetime.utcnow()
         end_time = start_time + timedelta(days=days)
         current_time = start_time
+        step_minutes = 3  # Check every 3 minutes instead of 1
         
         in_pass = False
         pass_start = None
         pass_max_el = 0
         pass_max_time = None
         pass_start_az = 0
+        pass_end_az = 0
         
-        while current_time < end_time:
+        while current_time < end_time and len(passes) < 50:  # Limit to 50 passes max
             t = ts.utc(current_time.year, current_time.month, current_time.day, 
                       current_time.hour, current_time.minute, current_time.second)
             
@@ -204,6 +211,7 @@ def calculate_passes(tle, observer_lat, observer_lng, observer_alt, days=10):
             # Satellite sets below horizon
             elif in_pass and elevation <= 0:
                 in_pass = False
+                pass_end_az = azimuth
                 
                 # Only include passes with max elevation > 10 degrees
                 if pass_max_el > 10:
@@ -216,15 +224,15 @@ def calculate_passes(tle, observer_lat, observer_lng, observer_alt, days=10):
                         'duration': duration,
                         'maxEl': round(pass_max_el),
                         'startAz': round(pass_start_az),
-                        'endAz': round(azimuth),
+                        'endAz': round(pass_end_az),
                         'mag': -2.5 if pass_max_el > 45 else -1.5 if pass_max_el > 30 else -0.5
                     })
                 
                 # Reset for next pass
                 pass_max_el = 0
             
-            # Increment by 1 minute
-            current_time += timedelta(minutes=1)
+            # Increment by step_minutes
+            current_time += timedelta(minutes=step_minutes)
         
         print(f'Found {len(passes)} passes with elevation > 10°')
         
@@ -266,7 +274,16 @@ def get_passes(norad_id, lat, lng, alt, days):
         lng = float(lng)
         alt = float(alt)
         
-        print(f"Fetching passes for satellite {norad_id} at ({lat}, {lng}, {alt}m) for {days} days")
+        # Create cache key
+        cache_key = f"{norad_id}_{lat}_{lng}_{alt}_{days}"
+        now = time.time()
+        
+        # Check cache
+        if cache_key in passes_cache and (now - last_passes_update.get(cache_key, 0)) < PASSES_CACHE_DURATION:
+            print(f"Using cached passes for {norad_id}")
+            return jsonify(passes_cache[cache_key])
+        
+        print(f"Calculating passes for satellite {norad_id} at ({lat}, {lng}, {alt}m) for {days} days")
         
         tle = get_tle(norad_id)
         print(f"Got TLE for {tle['name']}")
@@ -274,14 +291,20 @@ def get_passes(norad_id, lat, lng, alt, days):
         passes = calculate_passes(tle, lat, lng, alt, days)
         print(f"Calculated {len(passes)} passes")
         
-        return jsonify({
+        result = {
             'info': {
                 'satname': tle['name'],
                 'satid': norad_id,
                 'passescount': len(passes)
             },
             'passes': passes
-        })
+        }
+        
+        # Cache the result
+        passes_cache[cache_key] = result
+        last_passes_update[cache_key] = now
+        
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
